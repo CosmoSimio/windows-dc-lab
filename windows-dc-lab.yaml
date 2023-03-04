@@ -11,15 +11,19 @@ Parameters:
   DomainControllerName:
     Type: String
     Description: "Enter the name for the Domain Controller instance"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   CollectorServerName:
     Type: String
     Description: "Enter the name for the Collector server instance"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainName:
     Type: String
     Description: "Enter the domain name for the domain controller and collector servers"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainAdmin1:
     Type: String
     Description: "Enter the username for domain administrator user 1"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainAdmin1Password:
     Type: String
     Description: "Enter the password for domain administrator user 1"
@@ -27,6 +31,7 @@ Parameters:
   DomainAdmin2:
     Type: String
     Description: "Enter the username for domain administrator user 2"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainAdmin2Password:
     Type: String
     Description: "Enter the password for domain administrator user 2"
@@ -34,6 +39,7 @@ Parameters:
   DomainAdmin3:
     Type: String
     Description: "Enter the username for domain administrator user 3"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainAdmin3Password:
     Type: String
     Description: "Enter the password for domain administrator user 3"
@@ -41,36 +47,22 @@ Parameters:
   MSSQLInstanceName:
     Type: String
     Description: "Enter the name for the MSSQL instance"
+    AllowedPattern: "^[a-zA-Z0-9]*$"
   CollectorInstallCommand:
     Type: String
     Description: "Enter the command to install and configure the Collector software on the CollectorInstance"
     Default: ""
-  AMIId:
-    Type: AWS::EC2::Image::Id
-    Description: "Select the Amazon Machine Image (AMI) for the instances"
-    Default: "ami-0f10e27269e6e3b55"
   MSSQLPassword:
     Type: String
     Description: "Enter the password for the sa user in SQL Server"
     NoEcho: true
-  InstanceType:
-    Type: String
-    Description: "Select the instance type for the instances"
-    Default: "t3.micro"
-    AllowedValues:
-      - "t3.micro"
-      - "t3.small"
-      - "t3.medium"
-      - "t3.large"
-      - "t3.xlarge"
-      - "t3.2xlarge"
 
 Resources:
   DomainControllerInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: !Ref InstanceType
-      ImageId: !Ref AMIId
+      InstanceType: t3.small
+      ImageId: ami-0dc21fb273a648e34
       KeyName: !Ref KeyName
       SecurityGroupIds:
         - !Ref SecurityGroupId
@@ -85,12 +77,16 @@ Resources:
           New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
           # Create new domain
-          Install-ADDSForest -DomainName !Ref DomainName -DomainNetbiosName (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress.Split(".")[3] -DomainMode WinThreshold -ForestMode WinThreshold
+          Install-ADDSForest -DomainName ${DomainName} -DomainNetbiosName (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress.Replace(".", "") -DomainMode WinThreshold -ForestMode WinThreshold
 
           # Create domain administrator users
-          New-ADUser -Name ${DomainAdmin1} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin1Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin1}
-          New-ADUser -Name ${DomainAdmin2} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin2Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin2}
-          New-ADUser -Name ${DomainAdmin3} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin3Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin3}
+          $secpasswd1 = ConvertTo-SecureString ${DomainAdmin1Password} -AsPlainText -Force
+          $secpasswd2 = ConvertTo-SecureString ${DomainAdmin2Password} -AsPlainText -Force
+          $secpasswd3 = ConvertTo-SecureString ${DomainAdmin3Password} -AsPlainText -Force
+          $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+          New-ADUser -Name ${DomainAdmin1} -AccountPassword $secpasswd1 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin1}
+          New-ADUser -Name ${DomainAdmin2} -AccountPassword $secpasswd2 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin2}
+          New-ADUser -Name ${DomainAdmin3} -AccountPassword $secpasswd3 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin3}
 
           # Create DNS forwarders
           Set-DnsServerForwarder -IPAddress 8.8.8.8, 8.8.4.4
@@ -99,59 +95,80 @@ Resources:
           Restart-Computer -Force
           </powershell>
 
+
   CollectorInstance:
-      Type: AWS::EC2::Instance
-      Properties:
-        InstanceType: !Ref InstanceType
-        ImageId: !Ref AMIId
-        KeyName: !Ref KeyName
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        UserData:
-          Fn::Base64: !Sub |
-            <powershell>
-            # Configure static IP address
-            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      ImageId: ami-0dc21fb273a648e34
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Configure static IP address
+          $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+          New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
-            # Join domain
-            $domainCreds = (Get-Credential -UserName "${DomainName}\\Administrator" -Message "Enter domain administrator credentials")
-            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
+          # Join domain
+          $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+          Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-            # Install and configure the Collector software
-            ${CollectorInstallCommand}
-            </powershell>
+          # Install and configure the Collector software
+          ${CollectorInstallCommand}
+
+          # Restart computer
+          Restart-Computer -Force
+          </powershell>
 
   MSSQLInstance:
       Type: AWS::EC2::Instance
       Properties:
-        InstanceType: !Ref InstanceType
-        ImageId: !Ref AMIId
+        InstanceType: t3.small
+        ImageId: ami-09bb1af46d6d99c16
         KeyName: !Ref KeyName
         SecurityGroupIds:
           - !Ref SecurityGroupId
         UserData:
-          Fn::Base64: !Sub |
-            <powershell>
-            # Configure static IP address
-            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+            Fn::Base64: !Sub |
+              <powershell>
+              # Configure static IP address
+              $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+              New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
-            # Join domain
-            $domainCreds = (Get-Credential -UserName "${DomainName}\\Administrator" -Message "Enter domain administrator credentials")
-            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
+              # Join domain
+              $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+              Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-            # Install SQL Server
-            $saPassword = ConvertTo-SecureString -String "${MSSQLPassword}" -Force -AsPlainText
-            $installArgs = @("/ConfigurationFile=`"${Env:ProgramFiles(x86)}\Microsoft SQL Server\150\Setup Bootstrap\Log\20190304_212849\ConfigurationFile.ini`"", "/SQLSVCPASSWORD=`"$saPassword`"")
-            Start-Process -FilePath `"$($Env:SystemDrive)\SQL2019\setup.exe`" -ArgumentList $installArgs -Wait -NoNewWindow
+              # Enable Mixed Mode authentication and set the 'sa' account password
+              $saPassword = ConvertTo-SecureString -String "${MSSQLPassword}" -Force -AsPlainText
+              $saLogin = New-Object -TypeName Microsoft.SqlServer.Management.Smo.Login -ArgumentList 'sa', $saPassword
+              $saLogin.LoginType = 'Mixed'
+              $saLogin.Create()
 
-            # Configure firewall
-            New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
+              # Add the BUILTIN\Administrators group as SQL Server administrators
+              $adminGroup = New-Object -TypeName Microsoft.SqlServer.Management.Smo.ServerRole -ArgumentList 'sysadmin'
+              $adminGroup.Create()
+              $admins = New-Object -TypeName Microsoft.SqlServer.Management.Smo.Login -ArgumentList 'BUILTIN\Administrators'
+              $adminGroup.AddMember($admins)
 
-            # Restart computer
-            Restart-Computer -Force
-            </powershell>
+              # Restart SQL Server
+              Get-Service -Name 'MSSQLSERVER' | Restart-Service -Force
+
+              # Configure firewall
+              New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
+
+              # Install SQL Server Management Studio (SSMS)
+              $url = 'https://go.microsoft.com/fwlink/?linkid=2155216'
+              $path = "$($Env:SystemDrive)\SSMS-Setup.exe"
+              Invoke-WebRequest -Uri $url -OutFile $path
+              $installArgs = @('/install', '/quiet', '/norestart')
+              Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
+
+              # Restart computer
+              Restart-Computer -Force
+              </powershell>
 
 Outputs:
   DomainControllerPublicIP:
