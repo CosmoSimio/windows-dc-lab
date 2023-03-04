@@ -18,28 +18,31 @@ Parameters:
     AllowedPattern: "^[a-zA-Z0-9]*$"
   DomainName:
     Type: String
-    Description: "Enter the domain name for the domain controller and collector servers"
-    AllowedPattern: "^[a-zA-Z0-9]*$"
+    Description: The name of the Active Directory domain
+    AllowedPattern: ^[a-zA-Z0-9\-\.]*$
   DomainAdmin1:
     Type: String
-    Description: "Enter the username for domain administrator user 1"
-    AllowedPattern: "^[a-zA-Z0-9]*$"
+    Description: The username for the first domain admin
+    AllowedPattern: ^[a-zA-Z0-9_.]+$
+    ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin1Password:
     Type: String
     Description: "Enter the password for domain administrator user 1"
     NoEcho: true
   DomainAdmin2:
     Type: String
-    Description: "Enter the username for domain administrator user 2"
-    AllowedPattern: "^[a-zA-Z0-9]*$"
+    Description: The username for the second domain admin
+    AllowedPattern: ^[a-zA-Z0-9_.]+$
+    ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin2Password:
     Type: String
     Description: "Enter the password for domain administrator user 2"
     NoEcho: true
   DomainAdmin3:
     Type: String
-    Description: "Enter the username for domain administrator user 3"
-    AllowedPattern: "^[a-zA-Z0-9]*$"
+    Description: The username for the third domain admin
+    AllowedPattern: ^[a-zA-Z0-9_.]+$
+    ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin3Password:
     Type: String
     Description: "Enter the password for domain administrator user 3"
@@ -48,10 +51,6 @@ Parameters:
     Type: String
     Description: "Enter the name for the MSSQL instance"
     AllowedPattern: "^[a-zA-Z0-9]*$"
-  CollectorInstallCommand:
-    Type: String
-    Description: "Enter the command to install and configure the Collector software on the CollectorInstance"
-    Default: ""
   MSSQLPassword:
     Type: String
     Description: "Enter the password for the sa user in SQL Server"
@@ -61,6 +60,9 @@ Resources:
   DomainControllerInstance:
     Type: AWS::EC2::Instance
     Properties:
+      DisableApiTermination: true
+      CreditSpecification:
+        CPUCredits: standard
       InstanceType: t3.small
       ImageId: ami-0dc21fb273a648e34
       KeyName: !Ref KeyName
@@ -94,11 +96,16 @@ Resources:
           # Restart computer
           Restart-Computer -Force
           </powershell>
-
+      Tags:
+      - Key: Name
+        Value: !Sub "${DomainControllerName}.${DomainName}"
 
   CollectorInstance:
     Type: AWS::EC2::Instance
     Properties:
+      DisableApiTermination: true
+      CreditSpecification:
+        CPUCredits: standard
       InstanceType: t3.small
       ImageId: ami-0dc21fb273a648e34
       KeyName: !Ref KeyName
@@ -115,60 +122,58 @@ Resources:
           $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
           Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-          # Install and configure the Collector software
-          ${CollectorInstallCommand}
-
           # Restart computer
           Restart-Computer -Force
           </powershell>
+      Tags:
+      - Key: Name
+        Value: !Sub "${CollectorServerName}.${DomainName}"
 
   MSSQLInstance:
       Type: AWS::EC2::Instance
       Properties:
+        DisableApiTermination: true
+        CreditSpecification:
+          CPUCredits: standard
         InstanceType: t3.small
-        ImageId: ami-09bb1af46d6d99c16
+        ImageId: ami-0dc21fb273a648e34
         KeyName: !Ref KeyName
         SecurityGroupIds:
           - !Ref SecurityGroupId
         UserData:
-            Fn::Base64: !Sub |
-              <powershell>
-              # Configure static IP address
-              $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-              New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+          Fn::Base64: !Sub |
+            <powershell>
+            # Configure static IP address
+            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
-              # Join domain
-              $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
-              Add-Computer -DomainName ${DomainName} -Credential $domainCreds
+            # Join domain
+            $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-              # Enable Mixed Mode authentication and set the 'sa' account password
-              $saPassword = ConvertTo-SecureString -String "${MSSQLPassword}" -Force -AsPlainText
-              $saLogin = New-Object -TypeName Microsoft.SqlServer.Management.Smo.Login -ArgumentList 'sa', $saPassword
-              $saLogin.LoginType = 'Mixed'
-              $saLogin.Create()
+            # Install SQL Server 2022 Express
+            $url = 'https://go.microsoft.com/fwlink/?linkid=2164167&clcid=0x409'
+            $path = "$($Env:SystemDrive)\SQLServer2022-SSEI-Expr.exe"
+            Invoke-WebRequest -Uri $url -OutFile $path
+            $installArgs = @('/Action=Install', '/Features=SQLENGINE', '/InstanceName=MSSQLSERVER', '/SqlSysAdminAccounts=BUILTIN\Administrators', '/SecurityMode=SQL', '/SAPWD=' + ${MSSQLPassword}, '/IAcceptSqlServerLicenseTerms', '/quiet', '/norestart')
+            Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
 
-              # Add the BUILTIN\Administrators group as SQL Server administrators
-              $adminGroup = New-Object -TypeName Microsoft.SqlServer.Management.Smo.ServerRole -ArgumentList 'sysadmin'
-              $adminGroup.Create()
-              $admins = New-Object -TypeName Microsoft.SqlServer.Management.Smo.Login -ArgumentList 'BUILTIN\Administrators'
-              $adminGroup.AddMember($admins)
+            # Configure firewall
+            New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
 
-              # Restart SQL Server
-              Get-Service -Name 'MSSQLSERVER' | Restart-Service -Force
+            # Install SQL Server Management Studio (SSMS)
+            $url = 'https://go.microsoft.com/fwlink/?linkid=2155216'
+            $path = "$($Env:SystemDrive)\SSMS-Setup.exe"
+            Invoke-WebRequest -Uri $url -OutFile $path
+            $installArgs = @('/install', '/quiet', '/norestart')
+            Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
 
-              # Configure firewall
-              New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
-
-              # Install SQL Server Management Studio (SSMS)
-              $url = 'https://go.microsoft.com/fwlink/?linkid=2155216'
-              $path = "$($Env:SystemDrive)\SSMS-Setup.exe"
-              Invoke-WebRequest -Uri $url -OutFile $path
-              $installArgs = @('/install', '/quiet', '/norestart')
-              Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
-
-              # Restart computer
-              Restart-Computer -Force
-              </powershell>
+            # Restart computer
+            Restart-Computer -Force
+            </powershell>
+        Tags:
+        - Key: Name
+          Value: !Sub "${MSSQLInstanceName}.${DomainName}"
 
 Outputs:
   DomainControllerPublicIP:
