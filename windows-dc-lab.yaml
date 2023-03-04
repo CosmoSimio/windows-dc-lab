@@ -45,20 +45,31 @@ Parameters:
     Type: String
     Description: "Enter the command to install and configure the Collector software on the CollectorInstance"
     Default: ""
-  Tags:
-    Type: "List<Tag>"
-    Description: "Tags to apply to all resources"
-    Default: ""
   AMIId:
     Type: AWS::EC2::Image::Id
     Description: "Select the Amazon Machine Image (AMI) for the instances"
     Default: "ami-0f10e27269e6e3b55"
+  MSSQLPassword:
+    Type: String
+    Description: "Enter the password for the sa user in SQL Server"
+    NoEcho: true
+  InstanceType:
+    Type: String
+    Description: "Select the instance type for the instances"
+    Default: "t3.micro"
+    AllowedValues:
+      - "t3.micro"
+      - "t3.small"
+      - "t3.medium"
+      - "t3.large"
+      - "t3.xlarge"
+      - "t3.2xlarge"
 
 Resources:
   DomainControllerInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
+      InstanceType: !Ref InstanceType
       ImageId: !Ref AMIId
       KeyName: !Ref KeyName
       SecurityGroupIds:
@@ -77,9 +88,9 @@ Resources:
           Install-ADDSForest -DomainName !Ref DomainName -DomainNetbiosName (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress.Split(".")[3] -DomainMode WinThreshold -ForestMode WinThreshold
 
           # Create domain administrator users
-          New-ADUser -Name !Ref DomainAdmin1 -AccountPassword (ConvertTo-SecureString -AsPlainText -Force !Ref DomainAdmin1Password) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=!Ref DomainName" -Credential (Get-Credential -UserName !Ref DomainName\Administrator -Message "Enter domain administrator credentials") -DisplayName !Ref DomainAdmin1
-          New-ADUser -Name !Ref DomainAdmin2 -AccountPassword (ConvertTo-SecureString -AsPlainText -Force !Ref DomainAdmin2Password) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=!Ref DomainName" -Credential (Get-Credential -UserName !Ref DomainName\Administrator -Message "Enter domain administrator credentials") -DisplayName !Ref DomainAdmin2
-          New-ADUser -Name !Ref DomainAdmin3 -AccountPassword (ConvertTo-SecureString -AsPlainText -Force !Ref DomainAdmin3Password) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=!Ref DomainName" -Credential (Get-Credential -UserName !Ref DomainName\Administrator -Message "Enter domain administrator credentials") -DisplayName !Ref DomainAdmin3
+          New-ADUser -Name ${DomainAdmin1} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin1Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin1}
+          New-ADUser -Name ${DomainAdmin2} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin2Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin2}
+          New-ADUser -Name ${DomainAdmin3} -AccountPassword (ConvertTo-SecureString -AsPlainText -Force ${DomainAdmin3Password}) -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential (Get-Credential -UserName "${DomainName}/Administrator" -Message "Enter domain administrator credentials") -DisplayName ${DomainAdmin3}
 
           # Create DNS forwarders
           Set-DnsServerForwarder -IPAddress 8.8.8.8, 8.8.4.4
@@ -87,78 +98,60 @@ Resources:
           # Restart computer
           Restart-Computer -Force
           </powershell>
-      Tags:
-        - Key: Name
-          Value: !Ref DomainControllerName
-        - Key: Domain
-          Value: !Ref DomainName
-        - !If [HasTags, !Ref Tags, !Ref "AWS::NoValue"]
 
   CollectorInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t2.micro
-      ImageId: !Ref AMIId
-      KeyName: !Ref KeyName
-      SecurityGroupIds:
-        - !Ref SecurityGroupId
-      UserData:
-        Fn::Base64: !Sub |
-          <powershell>
-          # Configure static IP address
-          $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-          New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+      Type: AWS::EC2::Instance
+      Properties:
+        InstanceType: !Ref InstanceType
+        ImageId: !Ref AMIId
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        UserData:
+          Fn::Base64: !Sub |
+            <powershell>
+            # Configure static IP address
+            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
-          # Join domain
-          $domainCreds = (Get-Credential -UserName !Ref DomainName\Administrator -Message "Enter domain administrator credentials")
-          Add-Computer -DomainName !Ref DomainName -Credential $domainCreds
+            # Join domain
+            $domainCreds = (Get-Credential -UserName "${DomainName}\\Administrator" -Message "Enter domain administrator credentials")
+            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-          # Install and configure the Collector software
-          ${CollectorInstallCommand}
-          </powershell>
-      Tags:
-        - Key: Name
-          Value: !Ref CollectorServerName
-        - Key: Domain
-          Value: !Ref DomainName
-        - !If [HasTags, !Ref Tags, !Ref "AWS::NoValue"]
+            # Install and configure the Collector software
+            ${CollectorInstallCommand}
+            </powershell>
 
   MSSQLInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t2.micro
-      ImageId: !Ref AMIId
-      KeyName: !Ref KeyName
-      SecurityGroupIds:
-        - !Ref SecurityGroupId
-      UserData:
-        Fn::Base64: !Sub |
-          <powershell>
-          # Configure static IP address
-          $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-          New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+      Type: AWS::EC2::Instance
+      Properties:
+        InstanceType: !Ref InstanceType
+        ImageId: !Ref AMIId
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        UserData:
+          Fn::Base64: !Sub |
+            <powershell>
+            # Configure static IP address
+            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
-          # Join domain
-          $domainCreds = (Get-Credential -UserName !Ref DomainName\Administrator -Message "Enter domain administrator credentials")
-          Add-Computer -DomainName !Ref DomainName -Credential $domainCreds
+            # Join domain
+            $domainCreds = (Get-Credential -UserName "${DomainName}\\Administrator" -Message "Enter domain administrator credentials")
+            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
 
-          # Install SQL Server
-          $saPassword = ConvertTo-SecureString -String !Ref MSSQLPassword -Force -AsPlainText
-          $installArgs = @("/ConfigurationFile=`"${Env:ProgramFiles(x86)}\Microsoft SQL Server\150\Setup Bootstrap\Log\20190304_212849\ConfigurationFile.ini`"", "/SQLSVCPASSWORD=`"$saPassword`"")
-          Start-Process -FilePath `"$($Env:SystemDrive)\SQL2019\setup.exe`" -ArgumentList $installArgs -Wait -NoNewWindow
+            # Install SQL Server
+            $saPassword = ConvertTo-SecureString -String "${MSSQLPassword}" -Force -AsPlainText
+            $installArgs = @("/ConfigurationFile=`"${Env:ProgramFiles(x86)}\Microsoft SQL Server\150\Setup Bootstrap\Log\20190304_212849\ConfigurationFile.ini`"", "/SQLSVCPASSWORD=`"$saPassword`"")
+            Start-Process -FilePath `"$($Env:SystemDrive)\SQL2019\setup.exe`" -ArgumentList $installArgs -Wait -NoNewWindow
 
-          # Configure firewall
-          New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
+            # Configure firewall
+            New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
 
-          # Restart computer
-          Restart-Computer -Force
-          </powershell>
-      Tags:
-        - Key: Name
-          Value: MSSQL Server
-        - Key: Domain
-          Value: !Ref DomainName
-        - !If [HasTags, !Ref Tags, !Ref "AWS::NoValue"]
+            # Restart computer
+            Restart-Computer -Force
+            </powershell>
 
 Outputs:
   DomainControllerPublicIP:
@@ -170,14 +163,18 @@ Outputs:
 
   CollectorPublicIP:
     Value: !GetAtt CollectorInstance.PublicIp
+    Description: The public IP address of the collector instance
   CollectorPrivateIP:
     Value: !GetAtt CollectorInstance.PrivateIp
+    Description: The private IP address of the collector instance
   CollectorInstanceId:
     Value: !Ref CollectorInstance
 
   MSSQLPublicIP:
     Value: !GetAtt MSSQLInstance.PublicIp
+    Description: The public IP address of the SQL Server instance
   MSSQLPrivateIP:
     Value: !GetAtt MSSQLInstance.PrivateIp
+    Description: The private IP address of the SQL Server instance
   MSSQLInstanceId:
     Value: !Ref MSSQLInstance
