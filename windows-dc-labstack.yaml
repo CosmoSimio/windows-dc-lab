@@ -22,7 +22,7 @@ Parameters:
     AllowedPattern: ^[a-zA-Z0-9\-\.]*$
   DomainAdmin1:
     Type: String
-    Description: The username for the first domain admin
+    Description: The username for the first domain admin (e.g isaac.paramo)
     AllowedPattern: ^[a-zA-Z0-9_.]+$
     ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin1Password:
@@ -31,7 +31,7 @@ Parameters:
     NoEcho: true
   DomainAdmin2:
     Type: String
-    Description: The username for the second domain admin
+    Description: The username for the second domain admin (e.g svc_lacoll)
     AllowedPattern: ^[a-zA-Z0-9_.]+$
     ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin2Password:
@@ -40,7 +40,7 @@ Parameters:
     NoEcho: true
   DomainAdmin3:
     Type: String
-    Description: The username for the third domain admin
+    Description: The username for the third domain admin (e.g svc_dacoll)
     AllowedPattern: ^[a-zA-Z0-9_.]+$
     ConstraintDescription: Only alphanumeric characters, underscores, and periods are allowed
   DomainAdmin3Password:
@@ -60,7 +60,7 @@ Resources:
   DomainControllerInstance:
     Type: AWS::EC2::Instance
     Properties:
-      DisableApiTermination: true
+      DisableApiTermination: false
       CreditSpecification:
         CPUCredits: standard
       InstanceType: t3.small
@@ -104,7 +104,7 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn: DomainControllerInstance
     Properties:
-      DisableApiTermination: true
+      DisableApiTermination: false
       CreditSpecification:
         CPUCredits: standard
       InstanceType: t3.small
@@ -134,7 +134,7 @@ Resources:
       Type: AWS::EC2::Instance
       DependsOn: CollectorInstance
       Properties:
-        DisableApiTermination: true
+        DisableApiTermination: false
         CreditSpecification:
           CPUCredits: standard
         InstanceType: t3.small
