@@ -102,6 +102,7 @@ Resources:
 
   CollectorInstance:
     Type: AWS::EC2::Instance
+    DependsOn: DomainControllerInstance
     Properties:
       DisableApiTermination: true
       CreditSpecification:
@@ -131,6 +132,7 @@ Resources:
 
   MSSQLInstance:
       Type: AWS::EC2::Instance
+      DependsOn: CollectorInstance
       Properties:
         DisableApiTermination: true
         CreditSpecification:
