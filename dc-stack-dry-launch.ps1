@@ -5,7 +5,7 @@ $region = "us-east-2"
 $stackName = "isaac-windows-dc-lab"
 
 # Set the path to the CloudFormation template
-$templatePath = ".\windows-dc-lab.yaml"
+$templatePath = ".\windows-dc-labstack.yaml"
 
 # Set the parameter overrides for the CloudFormation stack
 $params = "VpcId=vpc-12345678", `
