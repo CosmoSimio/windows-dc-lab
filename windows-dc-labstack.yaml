@@ -160,8 +160,8 @@ Resources:
           New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
 
           # Join domain
-          $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\${DomainAdmin1}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
-          Add-Computer -DomainName ${DomainName} -Credential $domainCreds
+          $domainAdminCreds = New-Object System.Management.Automation.PSCredential ("${DomainAdmin1}@${DomainName}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+          Add-Computer -DomainName ${DomainName} -Credential $domainAdminCreds
 
           # Restart computer
           Restart-Computer -Force

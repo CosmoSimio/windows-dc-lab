@@ -23,6 +23,8 @@ $params["DomainAdmin3"] = Read-Host -Prompt "Enter DomainAdmin3"
 $params["DomainAdmin3Password"] = Read-Host -Prompt "Enter DomainAdmin3Password"
 $params["MSSQLInstanceName"] = Read-Host -Prompt "Enter MSSQLInstanceName"
 $params["MSSQLPassword"] = Read-Host -Prompt "Enter MSSQLPassword"
+$params["DomainNetbiosName"] = Read-Host -Prompt "Enter DomainNetbiosName"
+$params["SafeModeAdministratorPassword"] = Read-Host -Prompt "Enter SafeModeAdministratorPassword"
 
 # Convert the $params hashtable to an array of Key=Value pairs
 $paramsArray = $params.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }

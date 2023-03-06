@@ -17,6 +17,8 @@ read -p "Enter KeyName: " params["KeyName"]
 read -p "Enter DomainControllerName: " params["DomainControllerName"]
 read -p "Enter CollectorServerName: " params["CollectorServerName"]
 read -p "Enter DomainName: " params["DomainName"]
+read -p "Enter DomainNetbiosName: " params["DomainNetbiosName"]
+read -p "Enter SafeModeAdministratorPassword: " params["SafeModeAdministratorPassword"]
 read -p "Enter DomainAdmin1: " params["DomainAdmin1"]
 read -p "Enter DomainAdmin1Password: " params["DomainAdmin1Password"]
 read -p "Enter DomainAdmin2: " params["DomainAdmin2"]
@@ -38,4 +40,5 @@ aws cloudformation deploy \
     --stack-name "$stackName" \
     --template-file "$templatePath" \
     --parameter-overrides $paramsString \
-    --no-execute-changeset
+    --no-execute-changeset \
+    --region $region

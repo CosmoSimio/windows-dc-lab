@@ -14,6 +14,7 @@ $params = "VpcId=vpc-12345678", `
           "DomainControllerName=ec2windc1", `
           "CollectorServerName=ec2wincoll1", `
           "DomainName=isaaclabdom2.local", `
+          "DomainNetbiosName=ISAACLABDOM2", `
           "DomainAdmin1=isaac.paramo", `
           "DomainAdmin1Password=Password123", `
           "DomainAdmin2=svc_lacoll", `
@@ -21,7 +22,8 @@ $params = "VpcId=vpc-12345678", `
           "DomainAdmin3=svc_dacoll", `
           "DomainAdmin3Password=Password789", `
           "MSSQLInstanceName=ec2winsql1", `
-          "MSSQLPassword=MyPassw0rd"
+          "MSSQLPassword=MyPassw0rd", `
+          "SafeModeAdministratorPassword=SafeMode123"
 
 # Deploy the stack
 aws cloudformation deploy `

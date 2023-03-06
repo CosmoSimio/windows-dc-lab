@@ -10,7 +10,6 @@ stackName="isaac-windows-dc-labstack"
 templatePath="./windows-dc-labstack.yaml"
 
 # Set the parameter overrides for the CloudFormation stack
-# Set the parameter overrides for the CloudFormation stack
 params="VpcId=vpc-12345678"
 params="$params SecurityGroupId=sg-12345678"
 params="$params KeyName=mykeypair"
@@ -25,6 +24,8 @@ params="$params DomainAdmin3=admin3"
 params="$params DomainAdmin3Password=Password789"
 params="$params MSSQLInstanceName=sqlinstance"
 params="$params MSSQLPassword=MyPassw0rd"
+params="$params DomainNetbiosName=mydomain"
+params="$params SafeModeAdministratorPassword=AdminPassword123"
 
 # Deploy the stack
 aws cloudformation deploy \
