@@ -89,45 +89,52 @@ Resources:
         - !Ref SecurityGroupId
       UserData:
         Fn::Base64: !Sub |
-          <powershell>
-          # Rename computer
-          Rename-Computer -NewName ${DomainControllerName} -Force
-
-          # Install Active Directory Domain Services
-          Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
-
-          # Configure static IP address
-          $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-          New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
-
-          # Create new domain
-          Install-ADDSForest `
-          -DomainName ${DomainName} `
-          -CreateDnsDelegation:$false `
-          -DatabasePath "%SYSTEMROOT%\NTDS" `
-          -DomainMode "WinThreshold" `
-          -DomainNetbiosName ${DomainNetbiosName} `
-          -ForestMode "WinThreshold" `
-          -InstallDns:$true `
-          -LogPath "C:\Windows\NTDS" `
-          -SysvolPath "%SYSTEMROOT%\SYSVOL" `
-          -Force:$true
-
-          # Create domain administrator users
-          $secpasswd1 = ConvertTo-SecureString ${DomainAdmin1Password} -AsPlainText -Force
-          $secpasswd2 = ConvertTo-SecureString ${DomainAdmin2Password} -AsPlainText -Force
-          $secpasswd3 = ConvertTo-SecureString ${DomainAdmin3Password} -AsPlainText -Force
-          $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
-          New-ADUser -Name ${DomainAdmin1} -AccountPassword $secpasswd1 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin1}
-          New-ADUser -Name ${DomainAdmin2} -AccountPassword $secpasswd2 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin2}
-          New-ADUser -Name ${DomainAdmin3} -AccountPassword $secpasswd3 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin3}
-
-          # Create DNS forwarders
-          Set-DnsServerForwarder -IPAddress 8.8.8.8, 8.8.4.4
-
-          # Restart computer
-          Restart-Computer -Force
-          </powershell>
+          #!/bin/bash
+          # CloudFormation Init configuration
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource DomainControllerInstance --region ${AWS::Region}
+      Metadata:
+        AWS::CloudFormation::Init:
+          config:
+            commands:
+              01_rename_computer:
+                command: Rename-Computer -NewName ${DomainControllerName} -Force
+              02_install_ads:
+                command: Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+              03_configure_ip:
+                command: >
+                  $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+                  New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+              04_create_domain:
+                command: >
+                  Install-ADDSForest `
+                  -DomainName ${DomainName} `
+                  -CreateDnsDelegation:$false `
+                  -DatabasePath "%SYSTEMROOT%\NTDS" `
+                  -DomainMode "WinThreshold" `
+                  -DomainNetbiosName ${DomainNetbiosName} `
+                  -ForestMode "WinThreshold" `
+                  -InstallDns:$true `
+                  -LogPath "C:\Windows\NTDS" `
+                  -SysvolPath "%SYSTEMROOT%\SYSVOL" `
+                  -Force:$true
+              05_create_domain_admins:
+                command: >
+                  $secpasswd1 = ConvertTo-SecureString ${DomainAdmin1Password} -AsPlainText -Force
+                  $secpasswd2 = ConvertTo-SecureString ${DomainAdmin2Password} -AsPlainText -Force
+                  $secpasswd3 = ConvertTo-SecureString ${DomainAdmin3Password} -AsPlainText -Force
+                  $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\Administrator", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+                  New-ADUser -Name ${DomainAdmin1} -AccountPassword $secpasswd1 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin1}
+                  New-ADUser -Name ${DomainAdmin2} -AccountPassword $secpasswd2 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin2}
+                  New-ADUser -Name ${DomainAdmin3} -AccountPassword $secpasswd3 -Enabled $true -PasswordNeverExpires $true -CannotChangePassword $false -Path "CN=Users,DC=${DomainName}" -Credential $domainCreds -DisplayName ${DomainAdmin3}
+              06_create_dns_forwarders:
+                command: Set-DnsServerForwarder -IPAddress 8.8.8.8, 8.8.4.4
+              07_restart_computer:
+                command: Restart-Computer -Force
+            files:
+              /var/www/html/index.html:
+                content: !Sub "<html><body><h1>Hello, world!</h1></body></html>"
+                mode: "000644"
+                owner: apache
       Tags:
       - Key: Name
         Value: !Sub "${DomainControllerName}.${DomainName}"
@@ -151,81 +158,97 @@ Resources:
         - !Ref SecurityGroupId
       UserData:
         Fn::Base64: !Sub |
-          <powershell>
-          # Rename computer
-          Rename-Computer -NewName ${CollectorServerName} -Force
-
-          # Configure static IP address
-          $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-          New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
-
-          # Join domain
-          $domainAdminCreds = New-Object System.Management.Automation.PSCredential ("${DomainAdmin1}@${DomainName}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
-          Add-Computer -DomainName ${DomainName} -Credential $domainAdminCreds
-
-          # Restart computer
-          Restart-Computer -Force
-          </powershell>
+          #!/bin/bash
+          # CloudFormation Init configuration
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource CollectorInstance --region ${AWS::Region}
+      Metadata:
+        AWS::CloudFormation::Init:
+          config:
+            commands:
+              01_rename_computer:
+                command: Rename-Computer -NewName ${CollectorServerName} -Force
+              02_configure_ip:
+                command: >
+                  $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+                  New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+              03_join_domain:
+                command: >
+                  $domainAdminCreds = New-Object System.Management.Automation.PSCredential ("${DomainAdmin1}@${DomainName}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+                  Add-Computer -DomainName ${DomainName} -Credential $domainAdminCreds
+              04_restart_computer:
+                command: Restart-Computer -Force
+            files:
+              /var/www/html/index.html:
+                content: !Sub "<html><body><h1>Hello, world!</h1></body></html>"
+                mode: "000644"
+                owner: apache
       Tags:
       - Key: Name
         Value: !Sub "${CollectorServerName}.${DomainName}"
 
   MSSQLInstance:
-      Type: AWS::EC2::Instance
-      DependsOn: CollectorInstance
-      Properties:
-        DisableApiTermination: false
-        CreditSpecification:
-          CPUCredits: standard
-        InstanceType: t3.small
-        ImageId: ami-0dc21fb273a648e34
-        BlockDeviceMappings:
-          - DeviceName: /dev/sda1
-            Ebs:
-              VolumeSize: 30
-              VolumeType: gp2
-        KeyName: !Ref KeyName
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        UserData:
-          Fn::Base64: !Sub |
-            <powershell>
-            # Rename computer
-            Rename-Computer -NewName ${MSSQLInstanceName} -Force
-
-            # Configure static IP address
-            $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
-            New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
-
-            # Join domain
-            $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\${DomainAdmin1}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
-            Add-Computer -DomainName ${DomainName} -Credential $domainCreds
-
-            # Install SQL Server 2022 Express
-            $url = 'https://download.microsoft.com/download/5/1/4/5145fe04-4d30-4b85-b0d1-39533663a2f1/SQL2022-SSEI-Expr.exe'
-            $installPath = Join-Path $env:SystemDrive 'SQLServer'
-            New-Item -ItemType Directory -Path $installPath -Force | Out-Null
-            $path = Join-Path $installPath 'SQLServer2022-SSEI-Expr.exe'
-            Invoke-WebRequest -Uri $url -OutFile $path
-            $installArgs = @('/Action=Install', '/Features=SQLENGINE', '/InstanceName=MSSQLSERVER', '/SqlSysAdminAccounts=BUILTIN\Administrators', '/SecurityMode=SQL', '/SAPWD=' + ${MSSQLPassword}, '/IAcceptSqlServerLicenseTerms', '/quiet', '/norestart')
-            Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
-
-
-            # Configure firewall
-            New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
-
-            # Install SQL Server Management Studio (SSMS)
-            $url = 'https://aka.ms/ssmsfullsetup'
-            $installPath = Join-Path $env:SystemDrive 'SSMS'
-            New-Item -ItemType Directory -Path $installPath -Force | Out-Null
-            $path = Join-Path $installPath 'SSMS-Setup-ENU.exe'
-            Invoke-WebRequest -Uri $url -OutFile $path
-            $installArgs = @('/install', '/quiet', '/norestart')
-            Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
-
-            # Restart computer
-            Restart-Computer -Force
-            </powershell>
+    Type: AWS::EC2::Instance
+    DependsOn: CollectorInstance
+    Properties:
+      DisableApiTermination: false
+      CreditSpecification:
+        CPUCredits: standard
+      InstanceType: t3.small
+      ImageId: ami-0dc21fb273a648e34
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp2
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # CloudFormation Init configuration
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource MSSQLInstance --region ${AWS::Region}
+      Metadata:
+        AWS::CloudFormation::Init:
+          config:
+            commands:
+              01_rename_computer:
+                command: Rename-Computer -NewName ${MSSQLInstanceName} -Force
+              02_configure_ip:
+                command: >
+                  $IP = (Get-NetAdapter | Where-Object {$_.Name -eq 'Ethernet'}).IPv4Address.IPAddress
+                  New-NetIPAddress -IPAddress $IP -InterfaceAlias 'Ethernet' -PrefixLength 24 -DefaultGateway '10.0.0.1'
+              03_join_domain:
+                command: >
+                  $domainCreds = New-Object System.Management.Automation.PSCredential ("${DomainName}\${DomainAdmin1}", (ConvertTo-SecureString -String "${DomainAdmin1Password}" -Force -AsPlainText))
+                  Add-Computer -DomainName ${DomainName} -Credential $domainCreds
+              04_install_sql_server:
+                command: >
+                  $url = 'https://download.microsoft.com/download/5/1/4/5145fe04-4d30-4b85-b0d1-39533663a2f1/SQL2022-SSEI-Expr.exe'
+                  $installPath = Join-Path $env:SystemDrive 'SQLServer'
+                  New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+                  $path = Join-Path $installPath 'SQLServer2022-SSEI-Expr.exe'
+                  Invoke-WebRequest -Uri $url -OutFile $path
+                  $installArgs = @('/Action=Install', '/Features=SQLENGINE', '/InstanceName=MSSQLSERVER', '/SqlSysAdminAccounts=BUILTIN\Administrators', '/SecurityMode=SQL', '/SAPWD=' + ${MSSQLPassword}, '/IAcceptSqlServerLicenseTerms', '/quiet', '/norestart')
+                  Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
+              05_configure_firewall:
+                command: New-NetFirewallRule -DisplayName "SQL Server" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433
+              06_install_management_tools:
+                command: |
+                  $url = 'https://aka.ms/ssmsfullsetup'
+                  $installPath = Join-Path $env:SystemDrive 'SSMS'
+                  New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+                  $path = Join-Path $installPath 'SSMS-Setup-ENU.exe'
+                  Invoke-WebRequest -Uri $url -OutFile $path
+                  $installArgs = @('/install', '/quiet', '/norestart')
+                  Start-Process -FilePath $path -ArgumentList $installArgs -Wait -NoNewWindow
+              07_restart_computer:
+                command: Restart-Computer -Force
+            files:
+              /var/www/html/index.html:
+                content: !Sub "<html><body><h1>Hello, world!</h1></body></html>"
+                mode: "000644"
+                owner: apache
         Tags:
         - Key: Name
           Value: !Sub "${MSSQLInstanceName}.${DomainName}"
