@@ -88,8 +88,7 @@ Resources:
       SecurityGroupIds:
         - !Ref SecurityGroupId
       UserData:
-        Fn::Base64: 
-          !Sub |
+        Fn::Base64: !Sub |
           <powershell>
           # Rename computer
           Rename-Computer -NewName ${DomainControllerName} -Force
@@ -151,8 +150,7 @@ Resources:
       SecurityGroupIds:
         - !Ref SecurityGroupId
       UserData:
-        Fn::Base64: 
-          !Sub |
+        Fn::Base64: !Sub |
           <powershell>
           # Rename computer
           Rename-Computer -NewName ${CollectorServerName} -Force
@@ -190,8 +188,7 @@ Resources:
         SecurityGroupIds:
           - !Ref SecurityGroupId
         UserData:
-          Fn::Base64: 
-            !Sub |
+          Fn::Base64: !Sub |
             <powershell>
             # Rename computer
             Rename-Computer -NewName ${MSSQLInstanceName} -Force
